@@ -7,7 +7,7 @@ import re
 import os
 import logging
 import json 
-from dashboard import generate_dashboard
+from dashboard import generate_dashboard, forecast_spending
 from extract import extract_transactions
 
 
@@ -105,7 +105,15 @@ def index():
 
 @app.route("/dashboard")
 def dashboard():
-    return generate_dashboard()
+    pie_chart, bar_chart, forecast_chart, df, total_income = generate_dashboard("dataset/account.csv")
+    return render_template(
+        "dashboard.html",
+        pie_chart=pie_chart,
+        bar_chart=bar_chart,
+        forecast=forecast_chart,
+        total_income=total_income
+    )
+
 
 # -----------------------
 # Run the App

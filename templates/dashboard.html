@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Spend Dashboard</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h3>💰 Total Income: ${{ total_income }}</h3>
+
+<h2>📊 Spend by Category</h2>
+{{ pie_chart|safe }}
+
+<h2>📈 Monthly Expense Trends</h2>
+{{ bar_chart|safe }}
+
+<h2>🔮 Forecast of Future Spending</h2>
+{{ forecast|safe }}
+
+
+    
+<h2>🔮 Future Spend Forecast</h2>
+{{ forecast|safe }}
+</body>
+</html>

@@ -4,7 +4,7 @@ import json
 import io
 import csv
 import pdfplumber
-
+from date import format_date
 
 logging.basicConfig(
     level=logging.INFO,
@@ -13,7 +13,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def extract_transactions_chase_card(text):
+def extract_transactions_chase_card(text, filename):
     logger.info("🔍 Matched extractor: Chase Credit Card")
     bank_name = "Chase Credit Card"
     transactions = []
@@ -22,10 +22,11 @@ def extract_transactions_chase_card(text):
         if match:
             date, desc, amount = match.groups()
             clean_desc = " ".join(desc.split())
+            date = format_date(date.strip(), filename)
             transactions.append([date, amount, "Purchase", clean_desc, bank_name])
     return transactions
 
-def extract_transactions_pnc(text):
+def extract_transactions_pnc(text, filename):
     bank_name = "PNC"
     transactions = []
     sections = {
@@ -41,21 +42,23 @@ def extract_transactions_pnc(text):
             entries = re.findall(r"(\d{2}/\d{2})\s+([\d,.]+)\s+(.+?)(?=\n\d{2}/\d{2}|\Z)", section_text, re.DOTALL)
             for date, amount, desc in entries:
                 clean_desc = " ".join(desc.split())
+                date = format_date(date.strip(), filename)
                 transactions.append([date.strip(), amount.replace(",", ""), trans_type, clean_desc, bank_name])
     return transactions
 
 
-def extract_transactions_chase_bank(text):
+def extract_transactions_chase_bank(text, filename):
     bank_name = "Chase"
     transactions = []
     entries = re.findall(r"(\d{2}/\d{2})\s+(.+?)\s+(-?[\d,]+\.\d{2})(?:\s+[\d,]+\.\d{2})?", text)
     for date, desc, amount in entries:
         clean_desc = " ".join(desc.split())
         type_ = "Credit" if "-" not in amount else "Debit"
+        date = format_date(date.strip(), filename) 
         transactions.append([date.strip(), amount.replace(",", ""), type_, clean_desc, bank_name])
     return transactions
 
-def extract_transactions_chase_card(text):
+def extract_transactions_chase_card(text, filename):
     bank_name = "Chase Credit Card"
     transactions = []
 
@@ -67,11 +70,12 @@ def extract_transactions_chase_card(text):
             date, desc, amount = match.groups()
             clean_desc = " ".join(desc.split())
             type_ = "Purchase"  # These statements typically don’t show credits here
+            date = format_date(date.strip(), filename)  
             transactions.append([date, amount, type_, clean_desc, bank_name])
 
     return transactions
 
-def extract_transactions_discover_card(text):
+def extract_transactions_discover_card(text, filename):
     bank_name = "Discover"
     transactions = []
 
@@ -85,11 +89,12 @@ def extract_transactions_discover_card(text):
     for trans_date, post_date, desc, amount in pattern:
         clean_desc = " ".join(desc.split())
         type_ = "Credit" if "-" in amount else "Purchase"
+        date = format_date(date.strip(), filename)
         transactions.append([trans_date, amount.replace(",", ""), type_, clean_desc, bank_name])
 
     return transactions
 
-def extract_transactions_amex(text):
+def extract_transactions_amex(text,filename):
     bank_name = "American Express"
     transactions = []
 
@@ -103,12 +108,13 @@ def extract_transactions_amex(text):
     for date, desc, amount in pattern:
         clean_desc = " ".join(desc.strip().split())
         type_ = "Credit" if "-" in amount else "Purchase"
+        date = format_date(date.strip(), filename)
         transactions.append([date, amount.replace(",", ""), type_, clean_desc, bank_name])
 
     return transactions
 
 
-def extract_transactions_apple_card(text):
+def extract_transactions_apple_card(text,filename):
     bank_name = "Apple Card"
     transactions = []
 
@@ -122,23 +128,24 @@ def extract_transactions_apple_card(text):
     for date, desc, amount in pattern:
         clean_desc = " ".join(desc.strip().split())
         type_ = "Purchase"  # Apple Card does not use negative signs for credits in this section
+        date = format_date(date.strip(), filename)
         transactions.append([date, amount, type_, clean_desc, bank_name])
 
     return transactions
 
 def extract_transactions(text, filename, unknown_files):
     if "Virtual Wallet" in text or "PNC" in text:
-        return extract_transactions_pnc(text)
-    elif "New Balance" in text and "FREEDOM RISE" in text:
-        return extract_transactions_chase_card(text)
+        return extract_transactions_pnc(text, filename)
+    elif "New Balance" in text and "Payment Due Date" in text:
+        return extract_transactions_chase_card(text, filename)
     elif "JPMorgan" in text or "Chase.com" in text:
-        return extract_transactions_chase_bank(text)
+        return extract_transactions_chase_bank(text, filename)
     elif "Discover" in text and "Activity Period" in text:
-        return extract_transactions_discover_card(text)
+        return extract_transactions_discover_card(text, filename)
     elif "American Express" in text and "SkyMiles" in text:
-        return extract_transactions_amex(text)
+        return extract_transactions_amex(text, filename)
     elif "Apple Card is issued by Goldman Sachs Bank USA" in text:
-        return extract_transactions_apple_card(text)
+        return extract_transactions_apple_card(text, filename)
     else:
         print(f"⚠️ Unknown format in: {filename}")
         unknown_files.append(filename)

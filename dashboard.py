@@ -1,44 +1,111 @@
 import pandas as pd
-import matplotlib.pyplot as plt
-from io import BytesIO
-import base64
-import logging
+import plotly.express as px
+import joblib
+from prophet import Prophet
+import plotly.graph_objects as go
 
-logger = logging.getLogger(__name__)
 
-def generate_dashboard(csv_file="account.csv"):
-    try:
-        df = pd.read_csv(csv_file)
+# Load model and vectorizer
+model = joblib.load("category_classifier_model.pkl")
+vectorizer = joblib.load("tfidf_vectorizer.pkl")
 
-        # Clean and prepare data
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
-        df.dropna(subset=["Date", "Amount"], inplace=True)
-        df["Month"] = df["Date"].dt.to_period("M")
 
-        # Group by Month and Type
-        summary = df.groupby(["Month", "Type"])["Amount"].sum().unstack(fill_value=0)
+def clean_text(text):
+    return text.lower()
 
-        # Plot
-        fig, ax = plt.subplots(figsize=(10, 5))
-        summary.plot(kind="bar", stacked=True, ax=ax)
-        ax.set_title("Monthly Income vs Expenses")
-        ax.set_ylabel("Amount ($)")
-        plt.xticks(rotation=45)
 
-        # Save plot to base64
-        img = BytesIO()
-        plt.tight_layout()
-        plt.savefig(img, format="png")
-        img.seek(0)
-        plot_url = base64.b64encode(img.getvalue()).decode()
+def forecast_spending(df, months_ahead=3):
+    df["Month"] = df["Date"].dt.to_period("M").dt.to_timestamp()
 
-        html = f"""
-        <h2>📊 Income vs Expenses</h2>
-        <img src='data:image/png;base64,{plot_url}'/>
-        """
+    # ✅ Exclude both 'Income' and 'Papa Transfer'
+    exclude_categories = ["Income", "Papa Transfer"]
+    expense_df = df[~df["Predicted Category"].isin(exclude_categories)]
 
-        return html
-    except Exception as e:
-        logger.exception("Failed to generate dashboard.")
-        return f"<h3>Error generating dashboard: {e}</h3>"
+    monthly_df = expense_df.groupby("Month")["Amount"].sum().reset_index()
+    monthly_df.columns = ["ds", "y"]
+
+    model = Prophet()
+    model.fit(monthly_df)
+
+    future = model.make_future_dataframe(periods=months_ahead, freq="MS")
+    forecast = model.predict(future)
+
+    # Plotly interactive forecast chart
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=monthly_df["ds"],
+        y=monthly_df["y"],
+        mode="lines+markers",
+        name="Actual",
+        line=dict(color="blue"),
+        hovertemplate="Date: %{x}<br>Actual: %{y:.2f}<extra></extra>"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=forecast["ds"],
+        y=forecast["yhat"],
+        mode="lines",
+        name="Forecast",
+        line=dict(color="green", dash="dash"),
+        hovertemplate="Date: %{x}<br>Forecast: %{y:.2f}<extra></extra>"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=forecast["ds"],
+        y=forecast["yhat_upper"],
+        line=dict(width=0),
+        showlegend=False,
+        hoverinfo='skip'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=forecast["ds"],
+        y=forecast["yhat_lower"],
+        fill='tonexty',
+        fillcolor='rgba(0, 255, 0, 0.1)',
+        line=dict(width=0),
+        name='Uncertainty',
+        hoverinfo='skip'
+    ))
+
+    fig.update_layout(
+        title="🔮 Forecast of Future Spending (Excludes Income & Papa Transfer)",
+        xaxis_title="Date",
+        yaxis_title="Amount ($)",
+        hovermode="x unified"
+    )
+
+    return fig.to_html(full_html=False)
+
+
+def generate_dashboard(csv_path):
+    # Load data
+    df = pd.read_csv(csv_path, encoding="ISO-8859-1")
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df.dropna(subset=["Date", "Description", "Amount"], inplace=True)
+
+    # Predict category
+    df["Cleaned_Description"] = df["Description"].apply(clean_text)
+    df["Predicted Category"] = model.predict(vectorizer.transform(df["Cleaned_Description"]))
+    df["Month"] = df["Date"].dt.to_period("M").astype(str)
+
+    # Separate income and expenses
+    expense_df = df[df["Predicted Category"] != "Income"]
+    income_df = df[df["Predicted Category"] == "Income"]
+    total_income = income_df["Amount"].sum()
+
+    # Pie chart
+    pie_fig = px.pie(expense_df, names="Predicted Category", values="Amount", title="Spend by Category", hole=0.4)
+    pie_html = pie_fig.to_html(full_html=False)
+
+    # Monthly stacked bar
+    monthly_grouped = expense_df.groupby(["Month", "Predicted Category"])["Amount"].sum().reset_index()
+    bar_fig = px.bar(monthly_grouped, x="Month", y="Amount", color="Predicted Category",
+                     barmode="stack", title="Monthly Expense Trends")
+    bar_html = bar_fig.to_html(full_html=False)
+
+    # Forecast
+    forecast_html = forecast_spending(df)
+
+    return pie_html, bar_html, forecast_html, df, round(total_income, 2)
