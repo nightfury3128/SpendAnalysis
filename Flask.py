@@ -127,6 +127,7 @@ def dashboard():
                 "savings_rate": 0
             }
         
+        # Pass data to the improved dashboard template
         return render_template(
             "dashboard.html",
             pie_chart=dashboard_data.get("pie_chart", ""),
@@ -147,11 +148,15 @@ def dashboard():
         )
     except Exception as e:
         logger.exception(f"Error in dashboard route: {str(e)}")
-        # Return a simple error page if something goes wrong
-        return f"<h1>Dashboard Error</h1><p>{str(e)}</p>"
+        # Return a styled error page if something goes wrong
+        return render_template("error.html", error=str(e))
 
 # -----------------------
 # Run the App
 # -----------------------
 if __name__ == "__main__":
+    # Ensure required directories exist
+    os.makedirs('static/css', exist_ok=True)
+    os.makedirs('static/js', exist_ok=True)
+    
     app.run(debug=True, port=5000)
