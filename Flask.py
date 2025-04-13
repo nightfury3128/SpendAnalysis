@@ -9,6 +9,7 @@ import logging
 from flask_caching import Cache
 from dashboard import generate_dashboard, forecast_spending
 from extract import extract_transactions
+import datetime
 
 # Import configuration from utils instead of loading directly
 from utils import CONFIG
@@ -31,6 +32,32 @@ logging.basicConfig(
     format="📘 [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# -----------------------
+# Custom Jinja2 filters and context
+# -----------------------
+@app.template_filter('now')
+def _jinja2_filter_now(fmt):
+    return datetime.datetime.now().strftime(fmt)
+
+@app.context_processor
+def inject_now():
+    return {'now': datetime.datetime.now()}
+
+# -----------------------
+# Access Information
+# -----------------------
+def get_ip_address():
+    """Get the local IP address to help users connect from other devices"""
+    import socket
+    try:
+        # Get the host name
+        hostname = socket.gethostname()
+        # Get the IP address
+        ip_address = socket.gethostbyname(hostname)
+        return ip_address
+    except Exception:
+        return "Could not determine IP address"
 
 # -----------------------
 # Token-Based Auth
