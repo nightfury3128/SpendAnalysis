@@ -105,15 +105,45 @@ def index():
 
 @app.route("/dashboard")
 def dashboard():
-    pie_chart, bar_chart, forecast_chart, df, total_income = generate_dashboard("dataset/account.csv")
-    return render_template(
-        "dashboard.html",
-        pie_chart=pie_chart,
-        bar_chart=bar_chart,
-        forecast=forecast_chart,
-        total_income=total_income
-    )
-
+    try:
+        # Get all visualizations and data from generate_dashboard
+        dashboard_data = generate_dashboard(CSV_FILE)
+        
+        # Log what keys are available for debugging
+        logger.info(f"Dashboard data keys: {list(dashboard_data.keys())}")
+        
+        # Add some basic validation to ensure key values exist
+        if not dashboard_data.get("summary_stats"):
+            dashboard_data["summary_stats"] = {
+                "total_income": 0, 
+                "total_papa_transfer": 0,
+                "total_expenses": 0, 
+                "savings": 0, 
+                "savings_rate": 0
+            }
+        
+        return render_template(
+            "dashboard.html",
+            pie_chart=dashboard_data.get("pie_chart", ""),
+            bar_chart=dashboard_data.get("bar_chart", ""),
+            forecast=dashboard_data.get("forecast", ""),
+            income_vs_expenses=dashboard_data.get("income_vs_expenses", ""),
+            essential_ratio=dashboard_data.get("essential_ratio", ""),
+            dining_vs_groceries=dashboard_data.get("dining_vs_groceries", ""),
+            calendar=dashboard_data.get("calendar", ""),
+            top_categories=dashboard_data.get("top_categories", ""),
+            category_growth=dashboard_data.get("category_growth", ""),
+            income_flow=dashboard_data.get("income_flow", ""),
+            rent_forecast=dashboard_data.get("rent_forecast", ""),
+            food_forecast=dashboard_data.get("food_forecast", ""),
+            transaction_table=dashboard_data.get("transaction_table", ""),  # Add this line
+            summary_stats=dashboard_data["summary_stats"],
+            total_income=dashboard_data["summary_stats"].get("total_income", 0)
+        )
+    except Exception as e:
+        logger.exception(f"Error in dashboard route: {str(e)}")
+        # Return a simple error page if something goes wrong
+        return f"<h1>Dashboard Error</h1><p>{str(e)}</p>"
 
 # -----------------------
 # Run the App
