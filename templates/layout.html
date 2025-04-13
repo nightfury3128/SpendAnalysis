@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Spend Analysis Dashboard{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    {% block additional_head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <i class="fas fa-chart-line"></i> Spend Analysis
+        </div>
+        <div class="nav-links">
+            <a href="/">Upload</a>
+            <a href="/dashboard">Dashboard</a>
+        </div>
+        <div class="theme-switch-wrapper">
+            <span><i class="fas fa-sun"></i></span>
+            <label class="theme-switch" for="theme-toggle">
+                <input type="checkbox" id="theme-toggle" />
+                <span class="slider"></span>
+            </label>
+            <span><i class="fas fa-moon"></i></span>
+        </div>
+    </nav>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/darkmode.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

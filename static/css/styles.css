@@ -1,0 +1,242 @@
+:root {
+  /* Light theme variables */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --text-primary: #212529;
+  --text-secondary: #6c757d;
+  --accent: #007bff;
+  --border: #dee2e6;
+  --chart-bg: #ffffff;
+  --card-shadow: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] {
+  /* Dark theme variables */
+  --bg-primary: #212529;
+  --bg-secondary: #343a40;
+  --text-primary: #f8f9fa;
+  --text-secondary: #adb5bd;
+  --accent: #0d6efd;
+  --border: #495057;
+  --chart-bg: #343a40;
+  --card-shadow: rgba(0, 0, 0, 0.5);
+}
+
+body {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: 'Roboto', sans-serif;
+  transition: all 0.3s ease;
+  margin: 0;
+  padding: 0;
+}
+
+.navbar {
+  background-color: var(--bg-primary);
+  box-shadow: 0 2px 4px var(--card-shadow);
+  padding: 1rem 2rem;
+}
+
+.navbar-brand {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.theme-switch-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.theme-switch {
+  display: inline-block;
+  height: 24px;
+  position: relative;
+  width: 48px;
+}
+
+.theme-switch input {
+  display: none;
+}
+
+.slider {
+  background-color: #ccc;
+  bottom: 0;
+  cursor: pointer;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  background-color: white;
+  bottom: 4px;
+  content: "";
+  height: 16px;
+  left: 4px;
+  position: absolute;
+  transition: .4s;
+  width: 16px;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--accent);
+}
+
+input:checked + .slider:before {
+  transform: translateX(24px);
+}
+
+.dashboard-container {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.card {
+  background-color: var(--bg-primary);
+  border-radius: 8px;
+  box-shadow: 0 4px 6px var(--card-shadow);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px var(--card-shadow);
+}
+
+.card-header {
+  background-color: var(--bg-secondary);
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.card-body {
+  padding: 1.5rem;
+}
+
+.chart-container {
+  width: 100%;
+  height: 300px;
+}
+
+.summary-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  background-color: var(--bg-primary);
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px var(--card-shadow);
+  text-align: center;
+}
+
+.stat-card h3 {
+  margin: 0;
+  font-size: 1.8rem;
+  color: var(--accent);
+}
+
+.stat-card p {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.upload-container {
+  max-width: 600px;
+  margin: 5rem auto;
+  background-color: var(--bg-primary);
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px var(--card-shadow);
+}
+
+.file-upload-area {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 3rem 2rem;
+  text-align: center;
+  margin-bottom: 1.5rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.file-upload-area:hover {
+  background-color: var(--bg-secondary);
+}
+
+.file-upload-area i {
+  font-size: 3rem;
+  color: var(--accent);
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.btn-primary {
+  background-color: var(--accent);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.3s ease;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table th, table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+table th {
+  background-color: var(--bg-secondary);
+  font-weight: 600;
+}
+
+tr:nth-child(even) {
+  background-color: var(--bg-secondary);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .grid-2, .grid-3 {
+    grid-template-columns: 1fr;
+  }
+  
+  .dashboard-container {
+    padding: 1rem;
+  }
+}

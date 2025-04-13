@@ -1,61 +1,31 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Upload Bank Statement</title>
-  <style>
-    body { font-family: Arial; max-width: 600px; margin: 50px auto; }
-    input, button { padding: 10px; margin-top: 10px; width: 100%; }
-    #message { margin-top: 20px; font-weight: bold; }
-  </style>
-</head>
-<body>
-  <h2>Upload PDF Statement</h2>
-  <form id="uploadForm">
-    <input type="file" id="pdfFile" accept="application/pdf" required />
-    <input type="text" id="apiKey" placeholder="Enter API Key" required />
-    <button type="submit">Upload</button>
-  </form>
-  <div id="message"></div>
+{% extends 'layout.html' %}
 
-  <script>
-    const form = document.getElementById("uploadForm");
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const file = document.getElementById("pdfFile").files[0];
-      const apiKey = document.getElementById("apiKey").value;
-      const message = document.getElementById("message");
+{% block title %}Upload Statements - Spend Analysis{% endblock %}
 
-      if (!file) {
-        message.textContent = "Please select a PDF file.";
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append("file", file);
-
-      try {
-        const res = await fetch("/upload", {
-          method: "POST",
-          headers: {
-            "X-API-Key": apiKey
-          },
-          body: formData
-        });
-
-        const result = await res.json();
-        if (res.ok) {
-          message.textContent = result.message;
-          message.style.color = "green";
-        } else {
-          message.textContent = result.error || "Upload failed.";
-          message.style.color = "red";
-        }
-      } catch (err) {
-        message.textContent = "Something went wrong.";
-        message.style.color = "red";
-      }
-    });
-  </script>
-</body>
-</html>
+{% block content %}
+<div class="upload-container">
+    <h1>Upload Your Bank Statement</h1>
+    <p>Upload your bank statement PDF to analyze your spending patterns</p>
+    
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <div class="file-upload-area" id="drop-area">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>Drag & Drop files here or click to select</p>
+            <p class="file-name">No file selected</p>
+            <input type="file" name="file" id="file-input" accept=".pdf" style="display: none;">
+        </div>
+        
+        <button type="submit" class="btn-primary">
+            <i class="fas fa-upload"></i> Upload & Analyze
+        </button>
+    </form>
+    
+    <div class="upload-info">
+        <h3>Supported Banks</h3>
+        <p>Currently supporting statements from major banks including Chase, Bank of America, and Wells Fargo.</p>
+        
+        <h3>Privacy Notice</h3>
+        <p>Your data is processed locally and never stored on external servers. All analysis happens in your browser.</p>
+    </div>
+</div>
+{% endblock %}

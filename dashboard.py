@@ -10,85 +10,121 @@ import datetime
 import json
 import sys
 import os
+import threading
+import time
+from functools import lru_cache
 
-# Import functions from sum.py
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from sum import categorize, normalize_transaction
+# Import functions from utils instead of sum.py
+from utils import categorize, normalize_transaction, clean_text, EXCLUDE_CATEGORIES, load_data, CONFIG
 
 # Load model and vectorizer for backward compatibility
 model = joblib.load("category_classifier_model.pkl")
 vectorizer = joblib.load("tfidf_vectorizer.pkl")
 
+# Cache for Prophet models
+forecast_cache = {}
+forecast_lock = threading.Lock()
+FORECAST_EXPIRY = 3600  # Cache forecasts for 1 hour
 
-def clean_text(text):
-    return text.lower()
+# Function to get or create a cached forecast
+def get_cached_forecast(cache_key, data_func, *args, **kwargs):
+    global forecast_cache
+    current_time = time.time()
+    
+    with forecast_lock:
+        # Remove expired forecasts
+        expired_keys = [k for k, v in forecast_cache.items() if current_time - v.get('timestamp', 0) > FORECAST_EXPIRY]
+        for k in expired_keys:
+            del forecast_cache[k]
+        
+        # Check if forecast exists in cache
+        if cache_key in forecast_cache:
+            return forecast_cache[cache_key]['forecast']
+    
+    # Create new forecast if not in cache
+    forecast_data = data_func(*args, **kwargs)
+    
+    with forecast_lock:
+        forecast_cache[cache_key] = {
+            'forecast': forecast_data,
+            'timestamp': current_time
+        }
+    
+    return forecast_data
 
 
 def forecast_spending(df, months_ahead=3):
-    df["Month"] = df["Date"].dt.to_period("M").dt.to_timestamp()
-
-    # ✅ Exclude both 'Income' and 'Papa Transfer'
-    exclude_categories = ["Income", "Papa Transfer", "Internal Transfer"]
-    expense_df = df[~df["Category"].isin(exclude_categories)]
-
-    # Use Normalized_Amount and take absolute value for forecast
-    monthly_df = expense_df.groupby("Month")["Normalized_Amount"].sum().abs().reset_index()
-    monthly_df.columns = ["ds", "y"]
-
-    model = Prophet()
-    model.fit(monthly_df)
-
-    future = model.make_future_dataframe(periods=months_ahead, freq="MS")
-    forecast = model.predict(future)
-
-    # Plotly interactive forecast chart
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=monthly_df["ds"],
-        y=monthly_df["y"],
-        mode="lines+markers",
-        name="Actual",
-        line=dict(color="blue"),
-        hovertemplate="Date: %{x}<br>Actual: %{y:.2f}<extra></extra>"
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=forecast["ds"],
-        y=forecast["yhat"],
-        mode="lines",
-        name="Forecast",
-        line=dict(color="green", dash="dash"),
-        hovertemplate="Date: %{x}<br>Forecast: %{y:.2f}<extra></extra>"
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=forecast["ds"],
-        y=forecast["yhat_upper"],
-        line=dict(width=0),
-        showlegend=False,
-        hoverinfo='skip'
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=forecast["ds"],
-        y=forecast["yhat_lower"],
-        fill='tonexty',
-        fillcolor='rgba(0, 255, 0, 0.1)',
-        line=dict(width=0),
-        name='Uncertainty',
-        hoverinfo='skip'
-    ))
+    """Forecast overall spending with caching support"""
+    # Create a cache key based on the dataframe hash and months ahead
+    cache_key = f"overall_forecast_{hash(str(df.shape))}_{months_ahead}"
     
-
-    fig.update_layout(
-        title="🔮 Forecast of Future Spending (Excludes Income & Papa Transfer)",
-        xaxis_title="Date",
-        yaxis_title="Amount ($)",
-        hovermode="x unified"
-    )
-
-    return fig.to_html(full_html=False)
+    # Define the actual forecast function
+    def _create_forecast():
+        df["Month"] = df["Date"].dt.to_period("M").dt.to_timestamp()
+        
+        # Use the constant from utils
+        expense_df = df[~df["Category"].isin(EXCLUDE_CATEGORIES)]
+        
+        # Use Normalized_Amount and take absolute value for forecast
+        monthly_df = expense_df.groupby("Month")["Normalized_Amount"].sum().abs().reset_index()
+        monthly_df.columns = ["ds", "y"]
+        
+        model = Prophet()
+        model.fit(monthly_df)
+        
+        future = model.make_future_dataframe(periods=months_ahead, freq="MS")
+        forecast = model.predict(future)
+        
+        # Plotly interactive forecast chart
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=monthly_df["ds"],
+            y=monthly_df["y"],
+            mode="lines+markers",
+            name="Actual",
+            line=dict(color="blue"),
+            hovertemplate="Date: %{x}<br>Actual: %{y:.2f}<extra></extra>"
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=forecast["ds"],
+            y=forecast["yhat"],
+            mode="lines",
+            name="Forecast",
+            line=dict(color="green", dash="dash"),
+            hovertemplate="Date: %{x}<br>Forecast: %{y:.2f}<extra></extra>"
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=forecast["ds"],
+            y=forecast["yhat_upper"],
+            line=dict(width=0),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=forecast["ds"],
+            y=forecast["yhat_lower"],
+            fill='tonexty',
+            fillcolor='rgba(0, 255, 0, 0.1)',
+            line=dict(width=0),
+            name='Uncertainty',
+            hoverinfo='skip'
+        ))
+        
+        fig.update_layout(
+            title="🔮 Forecast of Future Spending (Excludes Income & Papa Transfer)",
+            xaxis_title="Date",
+            yaxis_title="Amount ($)",
+            hovermode="x unified"
+        )
+        
+        return fig.to_html(full_html=False)
+    
+    # Get or create the forecast using our caching system
+    return get_cached_forecast(cache_key, _create_forecast)
 
 
 def income_vs_expenses(df):
@@ -408,68 +444,76 @@ def sankey_income_allocation(df):
 
 
 def category_forecast(df, category, months_ahead=3):
-    """Forecast spending for a specific category"""
-    df["Month"] = df["Date"].dt.to_period("M").dt.to_timestamp()
-    cat_df = df[df["Predicted Category"] == category]
+    """Forecast spending for a specific category with caching"""
+    # Create a cache key based on category, dataframe shape and months ahead
+    cache_key = f"{category}_forecast_{hash(str(df.shape))}_{months_ahead}"
     
-    if len(cat_df) < 3:  # Need minimum data for forecasting
-        return f"<p>Insufficient data for {category} forecast.</p>"
+    # Define the actual forecast function
+    def _create_forecast():
+        df["Month"] = df["Date"].dt.to_period("M").dt.to_timestamp()
+        cat_df = df[df["Predicted Category"] == category]
+        
+        if len(cat_df) < 3:  # Need minimum data for forecasting
+            return f"<p>Insufficient data for {category} forecast.</p>"
+        
+        monthly_df = cat_df.groupby("Month")["Amount"].sum().reset_index()
+        monthly_df.columns = ["ds", "y"]
+        
+        model = Prophet()
+        model.fit(monthly_df)
+        
+        future = model.make_future_dataframe(periods=months_ahead, freq="MS")
+        forecast = model.predict(future)
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=monthly_df["ds"],
+            y=monthly_df["y"],
+            mode="lines+markers",
+            name="Actual",
+            line=dict(color="blue"),
+            hovertemplate="Date: %{x}<br>Actual: %{y:.2f}<extra></extra>"
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=forecast["ds"],
+            y=forecast["yhat"],
+            mode="lines",
+            name="Forecast",
+            line=dict(color="green", dash="dash"),
+            hovertemplate="Date: %{x}<br>Forecast: %{y:.2f}<extra></extra>"
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=forecast["ds"],
+            y=forecast["yhat_upper"],
+            line=dict(width=0),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=forecast["ds"],
+            y=forecast["yhat_lower"],
+            fill='tonexty',
+            fillcolor='rgba(0, 255, 0, 0.1)',
+            line=dict(width=0),
+            name='Uncertainty',
+            hoverinfo='skip'
+        ))
+        
+        fig.update_layout(
+            title=f"🔮 {category} Spending Forecast",
+            xaxis_title="Date",
+            yaxis_title="Amount ($)",
+            hovermode="x unified"
+        )
+        
+        return fig.to_html(full_html=False)
     
-    monthly_df = cat_df.groupby("Month")["Amount"].sum().reset_index()
-    monthly_df.columns = ["ds", "y"]
-    
-    model = Prophet()
-    model.fit(monthly_df)
-    
-    future = model.make_future_dataframe(periods=months_ahead, freq="MS")
-    forecast = model.predict(future)
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=monthly_df["ds"],
-        y=monthly_df["y"],
-        mode="lines+markers",
-        name="Actual",
-        line=dict(color="blue"),
-        hovertemplate="Date: %{x}<br>Actual: %{y:.2f}<extra></extra>"
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=forecast["ds"],
-        y=forecast["yhat"],
-        mode="lines",
-        name="Forecast",
-        line=dict(color="green", dash="dash"),
-        hovertemplate="Date: %{x}<br>Forecast: %{y:.2f}<extra></extra>"
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=forecast["ds"],
-        y=forecast["yhat_upper"],
-        line=dict(width=0),
-        showlegend=False,
-        hoverinfo='skip'
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=forecast["ds"],
-        y=forecast["yhat_lower"],
-        fill='tonexty',
-        fillcolor='rgba(0, 255, 0, 0.1)',
-        line=dict(width=0),
-        name='Uncertainty',
-        hoverinfo='skip'
-    ))
-    
-    fig.update_layout(
-        title=f"🔮 {category} Spending Forecast",
-        xaxis_title="Date",
-        yaxis_title="Amount ($)",
-        hovermode="x unified"
-    )
-    
-    return fig.to_html(full_html=False)
+    # Get or create the forecast using our caching system
+    return get_cached_forecast(cache_key, _create_forecast)
 
 def transaction_table(df):
     """

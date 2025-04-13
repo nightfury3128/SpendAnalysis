@@ -6,18 +6,22 @@ import pdfplumber
 import re
 import os
 import logging
-import json 
+from flask_caching import Cache
 from dashboard import generate_dashboard, forecast_spending
 from extract import extract_transactions
 
-
-with open ("creds.json") as creds:
-    config = json.load(creds)
-
+# Import configuration from utils instead of loading directly
+from utils import CONFIG
 
 app = Flask(__name__)
-API_KEY = config["API_KEY"]  
-CSV_FILE = config["CSV_FILE"] 
+API_KEY = CONFIG.get("API_KEY", "")
+CSV_FILE = CONFIG.get("CSV_FILE", "Dataset/account.csv")
+
+# Cache configuration
+cache = Cache(app, config={
+    'CACHE_TYPE': 'simple',
+    'CACHE_DEFAULT_TIMEOUT': 300  # 5 minutes cache timeout
+})
 
 # -----------------------
 # Logging Configuration
@@ -104,6 +108,7 @@ def index():
     return render_template("index.html")
 
 @app.route("/dashboard")
+@cache.cached(timeout=300)  # Cache for 5 minutes
 def dashboard():
     try:
         # Get all visualizations and data from generate_dashboard
@@ -136,7 +141,7 @@ def dashboard():
             income_flow=dashboard_data.get("income_flow", ""),
             rent_forecast=dashboard_data.get("rent_forecast", ""),
             food_forecast=dashboard_data.get("food_forecast", ""),
-            transaction_table=dashboard_data.get("transaction_table", ""),  # Add this line
+            transaction_table=dashboard_data.get("transaction_table", ""),
             summary_stats=dashboard_data["summary_stats"],
             total_income=dashboard_data["summary_stats"].get("total_income", 0)
         )

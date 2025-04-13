@@ -5,92 +5,19 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
 import joblib
-import json 
+import numpy as np
+from sklearn.metrics import confusion_matrix
 
-with open ("creds.json") as creds: 
-    config = json.load(creds)
-# Load data
-df = pd.read_csv(config["CSV_FILE"], encoding="ISO-8859-1")
-df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-df.dropna(subset=["Date", "Description"], inplace=True)
+# Import from utils module instead of defining redundant functions
+from utils import categorize, clean_text, load_data, CONFIG
 
-# Enhanced categorization function
-def categorize(description):
-    desc = description.lower()
-    
-    # Try to load config with account numbers if available
-    try:
-        with open ("creds.json") as creds: 
-            config = json.load(creds)
-            number1 = config.get("number1", "")
-            number2 = config.get("number2", "")
-            number3 = config.get("number3", "")
-            
-        # Check for internal transfers first with actual account numbers
-        if any(keyword in desc for keyword in [f"transfer from {number1}", f"transfer from {number2}", 
-                                              f"Online Transfer To {number3}", "transfer"]):
-            return "Internal Transfer"
-    except:
-        pass  # Continue with other categories if config not found
-        
-    if any(keyword in desc for keyword in ["meijer", "walmart", "costco", "kroger", "grocery", "aldi", "whole foods"]):
-        return "Groceries"
-    elif any(keyword in desc for keyword in ["uber eats", "doordash", "grubhub", "restaurant", "dining", "mcdonald's", 
-                                           "coffee", "cafe", "chick-fil-a", "raising canes", "chipotle", "aramark", 
-                                           "china food", "fortune noodle house", "starbucks", "subway", "the 86", 
-                                           "deli", "halal food", "thai express", "adeep india", "drunken", "adriaticos", 
-                                           "cheesecake", "united dairy farm", "popeyes"]):
-        return "Food & Dining"
-    elif any(keyword in desc for keyword in ["uber", "lyft", "ride", "taxi", "masabi_sorta", "american airlines", "masabi"]):
-        return "Transport"
-    elif any(keyword in desc for keyword in ["netflix", "spotify", "subscription", "apple.com", "openai", "chatgpt", 
-                                           "crunchyroll", "chegg"]):
-        return "Subscription"
-    elif any(keyword in desc for keyword in ["rent", "lease", "apartment", "rebecca", "mclean", "Rebecca "]):
-        print(f"Rent detected in: {desc} of amount {df.loc[df['Description'] == description, 'Amount'].values[0]}")
-        return "Rent"
-    elif any(keyword in desc for keyword in ["zelle to", "venmo", "paypal", "zel to", "zelle payment to", 
-                                            "domestic incoming wire fee"]):
-        return "Transfer"
-    elif any(keyword in desc for keyword in ["salary", "payroll", "deposit", "income", "fedwire", "zelle from", 
-                                            "zel from", "desposit", "zelle payment from", "credit", "new checking",
-                                            "Daily Cash Deposit"]):
-        return "Income"
-    elif any(keyword in desc for keyword in ["atm", "cash", "withdrawal"]):
-        return "Cash Withdrawal"
-    elif any(keyword in desc for keyword in ["amazon", "online", "purchase", "target", "clifton market", "the 86", 
-                                           "ravine", "amzn", "prime video", "viv makret", "bana market"]):
-        return "Shopping"
-    elif any(keyword in desc for keyword in ["dukeenergycorpor", "vzwrlss", "visible"]):
-        return "Utilities"
-    elif any(keyword in desc for keyword in ["universitycinti", "univ cinti", "university of cincinnati", "uc", 
-                                           "univ of cinti"]):
-        return "Tuition"
-    elif "parlevel texas" in desc:
-        return "Vending Machine"
-    elif any(keyword in desc for keyword in ["robinhood"]):
-        return "Investments"
-    elif any(keyword in desc for keyword in ["fandango", "amc"]):
-        return "Entertainment"
-    elif any(keyword in desc for keyword in ["cvs"]):
-        return "Pharmacy"
-    elif any(keyword in desc for keyword in ["epic", "steamgames", "playstationnetwork", "nvidia"]):
-        print(f"Games detected in: {desc} of amount {df.loc[df['Description'] == description, 'Amount'].values[0]}")
-        return "Games"
-    elif any(keyword in desc for keyword in ["Interest"]):
-        return "Returns"
-    else:
-        return "Other"
+# Load data using the centralized function
+df = load_data()
 
-# Apply categorization
+# Apply categorization from utils
 df["Category"] = df["Description"].apply(categorize)
 
-# Clean descriptions
-def clean_text(text):
-    text = text.lower()
-    text = re.sub(r"[^\w\s]", "", text)
-    return text
-
+# Clean descriptions using the shared function
 df["Cleaned_Description"] = df["Description"].apply(clean_text)
 
 # Train/test split with stratification to ensure all categories have examples
@@ -145,10 +72,6 @@ model.fit(X_train_vec, y_train)
 # Evaluate model
 y_pred = model.predict(X_test_vec)
 print("\nClassification Report:\n", classification_report(y_test, y_pred))
-
-# Print confusion matrix for categories with poor performance
-from sklearn.metrics import confusion_matrix
-import numpy as np
 
 # Get unique classes in sorted order
 classes = np.unique(np.concatenate([y_test, y_pred]))
