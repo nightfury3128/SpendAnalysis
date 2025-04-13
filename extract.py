@@ -1,46 +1,18 @@
-from flask import Flask, request, jsonify, render_template
-from functools import wraps
+import logging
+import re 
+import json
 import io
 import csv
 import pdfplumber
-import re
-import os
-import logging
-import json 
-
-with open ("creds.json") as creds:
-    config = json.load(creds)
 
 
-app = Flask(__name__)
-API_KEY = config["API_KEY"]  
-CSV_FILE = config["CSV_FILE"] 
-
-# -----------------------
-# Logging Configuration
-# -----------------------
 logging.basicConfig(
     level=logging.INFO,
     format="📘 [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# -----------------------
-# Token-Based Auth
-# -----------------------
-def requires_api_key(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.headers.get("X-API-Key")
-        if not token or token != API_KEY:
-            logger.warning("🔐 Unauthorized access attempt.")
-            return jsonify({"error": "Unauthorized"}), 401
-        return f(*args, **kwargs)
-    return decorated
 
-# -----------------------
-# Extractor Functions
-# -----------------------
 def extract_transactions_chase_card(text):
     logger.info("🔍 Matched extractor: Chase Credit Card")
     bank_name = "Chase Credit Card"
@@ -171,69 +143,3 @@ def extract_transactions(text, filename, unknown_files):
         print(f"⚠️ Unknown format in: {filename}")
         unknown_files.append(filename)
         return []
-
-# -----------------------
-# Upload Endpoint
-# -----------------------
-@app.route("/upload", methods=["POST"])
-@requires_api_key
-def upload_pdf():
-    if "file" not in request.files:
-        logger.warning("📎 No file in request.")
-        return jsonify({"error": "No file provided"}), 400
-
-    file = request.files["file"]
-
-    if not file.filename.endswith(".pdf"):
-        logger.warning("⛔ File is not a PDF.")
-        return jsonify({"error": "File is not a PDF"}), 400
-
-    try:
-        logger.info(f"📥 Received: {file.filename}")
-        pdf_bytes = file.read()
-
-        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            full_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
-
-        # 🔍 DEBUG: Show the first 30 lines of extracted text
-        preview_lines = full_text.strip().splitlines()[:30]
-        logger.info("🧾 First 30 lines of PDF text:")
-        for i, line in enumerate(preview_lines, start=1):
-            logger.info(f"{i:02d}: {line}")
-
-        unknown_files = []
-        transactions = extract_transactions(full_text, file.filename, unknown_files)
-
-        if not transactions:
-            logger.warning(f"⚠️ No transactions extracted from: {file.filename}")
-            return jsonify({"error": f"Could not process file: {file.filename}"}), 422
-
-        file_exists = os.path.isfile(CSV_FILE)
-        with open(CSV_FILE, "a", newline="") as f:
-            writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow(["Date", "Amount", "Type", "Description", "Bank"])
-            writer.writerows(transactions)
-
-        logger.info(f"✅ Saved {len(transactions)} transactions from: {file.filename}")
-        return jsonify({
-            "message": f"Processed and saved {len(transactions)} transactions.",
-            "filename": file.filename
-        })
-
-    except Exception as e:
-        logger.exception("💥 Unexpected error during PDF processing.")
-        return jsonify({"error": str(e)}), 500
-
-# -----------------------
-# Frontend Route
-# -----------------------
-@app.route("/", methods=["GET"])
-def index():
-    return render_template("index.html")
-
-# -----------------------
-# Run the App
-# -----------------------
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)
