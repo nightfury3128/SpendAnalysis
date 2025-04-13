@@ -1,7 +1,57 @@
-import re
-import pdfplumber
+from flask import Flask, request, jsonify, render_template
+from functools import wraps
+import io
 import csv
+import pdfplumber
+import re
 import os
+import logging
+import json 
+
+with open ("creds.json") as creds:
+    config = json.load(creds)
+
+
+app = Flask(__name__)
+API_KEY = config["API_KEY"]  
+CSV_FILE = config["CSV_FILE"] 
+
+# -----------------------
+# Logging Configuration
+# -----------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="📘 [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# -----------------------
+# Token-Based Auth
+# -----------------------
+def requires_api_key(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get("X-API-Key")
+        if not token or token != API_KEY:
+            logger.warning("🔐 Unauthorized access attempt.")
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+# -----------------------
+# Extractor Functions
+# -----------------------
+def extract_transactions_chase_card(text):
+    logger.info("🔍 Matched extractor: Chase Credit Card")
+    bank_name = "Chase Credit Card"
+    transactions = []
+    for line in text.splitlines():
+        match = re.match(r"^(\d{2}/\d{2})\s+(.*?)\s+(\d+\.\d{2})$", line.strip())
+        if match:
+            date, desc, amount = match.groups()
+            clean_desc = " ".join(desc.split())
+            transactions.append([date, amount, "Purchase", clean_desc, bank_name])
+    return transactions
 
 def extract_transactions_pnc(text):
     bank_name = "PNC"
@@ -21,6 +71,7 @@ def extract_transactions_pnc(text):
                 clean_desc = " ".join(desc.split())
                 transactions.append([date.strip(), amount.replace(",", ""), trans_type, clean_desc, bank_name])
     return transactions
+
 
 def extract_transactions_chase_bank(text):
     bank_name = "Chase"
@@ -103,12 +154,10 @@ def extract_transactions_apple_card(text):
 
     return transactions
 
-
-
 def extract_transactions(text, filename, unknown_files):
     if "Virtual Wallet" in text or "PNC" in text:
         return extract_transactions_pnc(text)
-    elif "New Balance" in text and "Payment Due Date" in text:
+    elif "New Balance" in text and "FREEDOM RISE" in text:
         return extract_transactions_chase_card(text)
     elif "JPMorgan" in text or "Chase.com" in text:
         return extract_transactions_chase_bank(text)
@@ -123,33 +172,68 @@ def extract_transactions(text, filename, unknown_files):
         unknown_files.append(filename)
         return []
 
-def process_all_pdfs(input_folder, output_csv):
-    all_transactions = []
-    unknown_files = []
+# -----------------------
+# Upload Endpoint
+# -----------------------
+@app.route("/upload", methods=["POST"])
+@requires_api_key
+def upload_pdf():
+    if "file" not in request.files:
+        logger.warning("📎 No file in request.")
+        return jsonify({"error": "No file provided"}), 400
 
-    for filename in os.listdir(input_folder):
-        if filename.lower().endswith(".pdf"):
-            file_path = os.path.join(input_folder, filename)
-            print(f"Processing: {file_path}")
+    file = request.files["file"]
 
-            with pdfplumber.open(file_path) as pdf:
-                full_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+    if not file.filename.endswith(".pdf"):
+        logger.warning("⛔ File is not a PDF.")
+        return jsonify({"error": "File is not a PDF"}), 400
 
-            transactions = extract_transactions(full_text, filename, unknown_files)
-            all_transactions.extend(transactions)
+    try:
+        logger.info(f"📥 Received: {file.filename}")
+        pdf_bytes = file.read()
 
-    # Save transactions
-    with open(output_csv, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Date", "Amount", "Type", "Description", "Bank"])
-        writer.writerows(all_transactions)
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            full_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
 
-    print(f"\n✅ All transactions saved to: {output_csv}")
+        # 🔍 DEBUG: Show the first 30 lines of extracted text
+        preview_lines = full_text.strip().splitlines()[:30]
+        logger.info("🧾 First 30 lines of PDF text:")
+        for i, line in enumerate(preview_lines, start=1):
+            logger.info(f"{i:02d}: {line}")
 
-    if unknown_files:
-        print("\n⚠️ The following files had unknown formats and were skipped:")
-        for file in unknown_files:
-            print(f" - {file}")
+        unknown_files = []
+        transactions = extract_transactions(full_text, file.filename, unknown_files)
 
-# Example usage
-process_all_pdfs("Dataset", "account.csv")
+        if not transactions:
+            logger.warning(f"⚠️ No transactions extracted from: {file.filename}")
+            return jsonify({"error": f"Could not process file: {file.filename}"}), 422
+
+        file_exists = os.path.isfile(CSV_FILE)
+        with open(CSV_FILE, "a", newline="") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["Date", "Amount", "Type", "Description", "Bank"])
+            writer.writerows(transactions)
+
+        logger.info(f"✅ Saved {len(transactions)} transactions from: {file.filename}")
+        return jsonify({
+            "message": f"Processed and saved {len(transactions)} transactions.",
+            "filename": file.filename
+        })
+
+    except Exception as e:
+        logger.exception("💥 Unexpected error during PDF processing.")
+        return jsonify({"error": str(e)}), 500
+
+# -----------------------
+# Frontend Route
+# -----------------------
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html")
+
+# -----------------------
+# Run the App
+# -----------------------
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)

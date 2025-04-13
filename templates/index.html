@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload Bank Statement</title>
+  <style>
+    body { font-family: Arial; max-width: 600px; margin: 50px auto; }
+    input, button { padding: 10px; margin-top: 10px; width: 100%; }
+    #message { margin-top: 20px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>Upload PDF Statement</h2>
+  <form id="uploadForm">
+    <input type="file" id="pdfFile" accept="application/pdf" required />
+    <input type="text" id="apiKey" placeholder="Enter API Key" required />
+    <button type="submit">Upload</button>
+  </form>
+  <div id="message"></div>
+
+  <script>
+    const form = document.getElementById("uploadForm");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const file = document.getElementById("pdfFile").files[0];
+      const apiKey = document.getElementById("apiKey").value;
+      const message = document.getElementById("message");
+
+      if (!file) {
+        message.textContent = "Please select a PDF file.";
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const res = await fetch("/upload", {
+          method: "POST",
+          headers: {
+            "X-API-Key": apiKey
+          },
+          body: formData
+        });
+
+        const result = await res.json();
+        if (res.ok) {
+          message.textContent = result.message;
+          message.style.color = "green";
+        } else {
+          message.textContent = result.error || "Upload failed.";
+          message.style.color = "red";
+        }
+      } catch (err) {
+        message.textContent = "Something went wrong.";
+        message.style.color = "red";
+      }
+    });
+  </script>
+</body>
+</html>
