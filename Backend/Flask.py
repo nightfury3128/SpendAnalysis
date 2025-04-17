@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS  # Import CORS
 from functools import wraps
 import io
 import csv
@@ -15,6 +16,9 @@ import datetime
 from utils import CONFIG
 
 app = Flask(__name__)
+# Enable CORS with more permissive settings
+CORS(app, supports_credentials=True, expose_headers=['X-API-Key'])
+
 API_KEY = CONFIG.get("API_KEY", "")
 CSV_FILE = CONFIG.get("CSV_FILE", "Dataset/account.csv")
 
@@ -32,6 +36,13 @@ logging.basicConfig(
     format="📘 [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# Log the configured API key (masked for security) for debugging
+if API_KEY:
+    masked_api_key = API_KEY[:2] + '*' * (len(API_KEY)-4) + API_KEY[-2:] if len(API_KEY) > 3 else '***'
+    logger.info(f"🔑 Configured API key: {masked_api_key}")
+else:
+    logger.warning("⚠️ No API key configured in creds.json")
 
 # -----------------------
 # Custom Jinja2 filters and context
@@ -66,12 +77,37 @@ def requires_api_key(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.headers.get("X-API-Key")
-        if not token or token != API_KEY:
-            logger.warning("🔐 Unauthorized access attempt.")
-            return jsonify({"error": "Unauthorized"}), 401
+        if not token:
+            logger.warning("🔐 No API key provided in request.")
+            return jsonify({"error": "API key required"}), 401
+            
+        if token != API_KEY:
+            # Log part of received token for debugging (masked for security)
+            masked_token = token[:2] + '*' * (len(token)-4) + token[-2:] if len(token) > 3 else '***'
+            logger.warning(f"🔐 Invalid API key provided: {masked_token} vs expected: {masked_api_key}")
+            return jsonify({"error": "Invalid API key"}), 401
+            
         return f(*args, **kwargs)
     return decorated
 
+# -----------------------
+# API Key Check Endpoint
+# -----------------------
+@app.route("/api-key-check", methods=["GET"])
+def check_api_key():
+    token = request.headers.get("X-API-Key")
+    if not token:
+        logger.warning("🔐 API key check: No API key provided")
+        return jsonify({"valid": False, "error": "No API key provided"}), 401
+    
+    valid = token == API_KEY
+    if valid:
+        logger.info("✅ API key check: Valid key")
+    else:
+        masked_token = token[:2] + '*' * (len(token)-4) + token[-2:] if len(token) > 3 else '***'
+        logger.warning(f"❌ API key check: Invalid key {masked_token}")
+        
+    return jsonify({"valid": valid})
 
 # -----------------------
 # Upload Endpoint
@@ -126,64 +162,31 @@ def upload_pdf():
         logger.exception("💥 Unexpected error during PDF processing.")
         return jsonify({"error": str(e)}), 500
 
-
 # -----------------------
-# Frontend Route
+# Dashboard Endpoint
 # -----------------------
-@app.route("/", methods=["GET"])
-def index():
-    return render_template("index.html")
-
-@app.route("/dashboard")
-@cache.cached(timeout=300)  # Cache for 5 minutes
-def dashboard():
+@app.route("/dashboard", methods=["GET"])
+@requires_api_key
+@cache.cached(timeout=300)
+def dashboard_data():
     try:
-        # Get all visualizations and data from generate_dashboard
-        dashboard_data = generate_dashboard(CSV_FILE)
+        # Check if CSV file exists
+        if not os.path.isfile(CSV_FILE):
+            return jsonify({"error": "No transaction data found"}), 404
+            
+        # Generate dashboard data
+        dashboard = generate_dashboard(CSV_FILE)
+        return jsonify(dashboard)
         
-        # Log what keys are available for debugging
-        logger.info(f"Dashboard data keys: {list(dashboard_data.keys())}")
-        
-        # Add some basic validation to ensure key values exist
-        if not dashboard_data.get("summary_stats"):
-            dashboard_data["summary_stats"] = {
-                "total_income": 0, 
-                "total_papa_transfer": 0,
-                "total_expenses": 0, 
-                "savings": 0, 
-                "savings_rate": 0
-            }
-        
-        # Pass data to the improved dashboard template
-        return render_template(
-            "dashboard.html",
-            pie_chart=dashboard_data.get("pie_chart", ""),
-            bar_chart=dashboard_data.get("bar_chart", ""),
-            forecast=dashboard_data.get("forecast", ""),
-            income_vs_expenses=dashboard_data.get("income_vs_expenses", ""),
-            essential_ratio=dashboard_data.get("essential_ratio", ""),
-            dining_vs_groceries=dashboard_data.get("dining_vs_groceries", ""),
-            calendar=dashboard_data.get("calendar", ""),
-            top_categories=dashboard_data.get("top_categories", ""),
-            category_growth=dashboard_data.get("category_growth", ""),
-            income_flow=dashboard_data.get("income_flow", ""),
-            rent_forecast=dashboard_data.get("rent_forecast", ""),
-            food_forecast=dashboard_data.get("food_forecast", ""),
-            transaction_table=dashboard_data.get("transaction_table", ""),
-            summary_stats=dashboard_data["summary_stats"],
-            total_income=dashboard_data["summary_stats"].get("total_income", 0)
-        )
     except Exception as e:
-        logger.exception(f"Error in dashboard route: {str(e)}")
-        # Return a styled error page if something goes wrong
-        return render_template("error.html", error=str(e))
+        logger.exception("Error generating dashboard data")
+        return jsonify({"error": str(e)}), 500
 
 # -----------------------
-# Run the App
+# Run the server
 # -----------------------
 if __name__ == "__main__":
-    # Ensure required directories exist
-    os.makedirs('static/css', exist_ok=True)
-    os.makedirs('static/js', exist_ok=True)
-    
-    app.run(debug=True, port=5000)
+    ip_address = get_ip_address()
+    logger.info(f"🚀 Starting server on http://{ip_address}:5000")
+    app.run(debug=True, host="0.0.0.0")
+

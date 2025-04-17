@@ -18,8 +18,8 @@ from functools import lru_cache
 from utils import categorize, normalize_transaction, clean_text, EXCLUDE_CATEGORIES, load_data, CONFIG
 
 # Load model and vectorizer for backward compatibility
-model = joblib.load("category_classifier_model.pkl")
-vectorizer = joblib.load("tfidf_vectorizer.pkl")
+model = joblib.load("Backend\category_classifier_model.pkl")
+vectorizer = joblib.load("Backend\\tfidf_vectorizer.pkl")
 
 # Cache for Prophet models
 forecast_cache = {}
